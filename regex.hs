@@ -4,9 +4,9 @@ import Control.Monad.State
 import Data.Maybe (fromJust)
 
 type Parser a = StateT String Maybe a
-data RegexPattern = Literal Char | PositiveGroup [Char] | End
+data RegexPattern = Literal Char | PositiveGroup [Char] | NegativeGroup [Char] | End
         deriving (Show)
-newtype Regex = Regex {getPatterns :: [RegexPattern]}
+newtype Regex = Regex [RegexPattern]
         deriving (Show)
 
 runParser :: Parser a -> String -> Maybe a
@@ -14,7 +14,8 @@ runParser = evalStateT
 
 applyPattern :: RegexPattern -> Parser String
 applyPattern (Literal c) = return <$> parseChar c
-applyPattern (PositiveGroup cs) = return <$> asum (map parseChar cs)
+applyPattern (PositiveGroup cs) = return <$> parsePred (`elem` cs)
+applyPattern (NegativeGroup cs) = return <$> parsePred (not . (`elem` cs))
 applyPattern End = [] <$ eof
 
 applyRegex :: Regex -> Parser String
@@ -50,6 +51,9 @@ parseLiteral = Literal <$> (parseNotEscaped <|> parseEscaped)
 
 parsePositiveGroup :: Parser RegexPattern
 parsePositiveGroup = parseChar '[' *> (PositiveGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
+
+parseNegativeGroup :: Parser RegexPattern
+parseNegativeGroup = parseString "[^" *> (PositiveGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
 
 parseEnd :: Parser RegexPattern
 parseEnd = End <$ parseChar '$'
