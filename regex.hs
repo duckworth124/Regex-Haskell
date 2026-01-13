@@ -3,33 +3,45 @@ import Control.Monad
 import Control.Monad.State
 import Data.Maybe (fromJust)
 
-type Parser a = StateT String Maybe a
-data RegexPattern = Literal Char | PositiveGroup [Char] | NegativeGroup [Char] | End
+-- state stores unparsed string and whether we are at the start or not
+type Parser a = StateT (String, Bool) Maybe a
+data RegexPattern
+        = Literal Char
+        | PositiveGroup [Char]
+        | NegativeGroup [Char]
+        | End
+        | Start
+        | Any
         deriving (Show)
 newtype Regex = Regex [RegexPattern]
         deriving (Show)
 
 runParser :: Parser a -> String -> Maybe a
-runParser = evalStateT
+runParser p s = evalStateT p (s, True)
 
 applyPattern :: RegexPattern -> Parser String
 applyPattern (Literal c) = return <$> parseChar c
 applyPattern (PositiveGroup cs) = return <$> parsePred (`elem` cs)
 applyPattern (NegativeGroup cs) = return <$> parsePred (not . (`elem` cs))
 applyPattern End = [] <$ eof
+applyPattern Start = [] <$ start
+applyPattern Any = return <$> parsePred (const True)
 
 applyRegex :: Regex -> Parser String
 applyRegex (Regex xs) = concat <$> mapM applyPattern xs
 
 parsePred :: (Char -> Bool) -> Parser Char
 parsePred f = do
-        (x : xs) <- get
-        guard (f x)
-        put xs
+        (x : xs, _) <- get
+        guard . f $ x
+        put (xs, False)
         return x
 
 eof :: Parser ()
-eof = get >>= guard . null
+eof = get >>= guard . null . fst
+
+start :: Parser ()
+start = get >>= guard . snd
 
 parseChar :: Char -> Parser Char
 parseChar = parsePred . (==)
@@ -38,7 +50,7 @@ parseString :: String -> Parser String
 parseString = mapM parseChar
 
 metacharacters :: [Char]
-metacharacters = ['[', ']', '\\', '$']
+metacharacters = ['[', ']', '\\', '$', '^', '.']
 
 parseEscaped :: Parser Char
 parseEscaped = asum $ map ((parseChar '\\' *>) . parseChar) metacharacters
@@ -53,13 +65,19 @@ parsePositiveGroup :: Parser RegexPattern
 parsePositiveGroup = parseChar '[' *> (PositiveGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
 
 parseNegativeGroup :: Parser RegexPattern
-parseNegativeGroup = parseString "[^" *> (PositiveGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
+parseNegativeGroup = parseString "[^" *> (NegativeGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
 
 parseEnd :: Parser RegexPattern
 parseEnd = End <$ parseChar '$'
 
+parseStart :: Parser RegexPattern
+parseStart = Start <$ parseChar '^'
+
+parseAny :: Parser RegexPattern
+parseAny = Any <$ parseChar '.'
+
 parsePattern :: Parser RegexPattern
-parsePattern = parsePositiveGroup <|> parseEnd <|> parseLiteral
+parsePattern = parseNegativeGroup <|> parsePositiveGroup <|> parseEnd <|> parseStart <|> parseLiteral
 
 parseRegex :: Parser Regex
 parseRegex = Regex <$> many parsePattern
