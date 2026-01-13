@@ -4,7 +4,7 @@ import Control.Monad.State
 import Data.Maybe (fromJust)
 
 type Parser a = StateT String Maybe a
-data RegexPattern = Literal Char | PositiveGroup [Char]
+data RegexPattern = Literal Char | PositiveGroup [Char] | End
         deriving (Show)
 newtype Regex = Regex {getPatterns :: [RegexPattern]}
         deriving (Show)
@@ -15,6 +15,7 @@ runParser = evalStateT
 applyPattern :: RegexPattern -> Parser String
 applyPattern (Literal c) = return <$> parseChar c
 applyPattern (PositiveGroup cs) = return <$> asum (map parseChar cs)
+applyPattern End = [] <$ eof
 
 applyRegex :: Regex -> Parser String
 applyRegex (Regex xs) = concat <$> mapM applyPattern xs
@@ -26,20 +27,20 @@ parsePred f = do
         put xs
         return x
 
+eof :: Parser ()
+eof = get >>= guard . null
+
 parseChar :: Char -> Parser Char
 parseChar = parsePred . (==)
 
 parseString :: String -> Parser String
 parseString = mapM parseChar
 
-parseAny :: Parser Char
-parseAny = parsePred (const True)
-
 metacharacters :: [Char]
-metacharacters = ['[', ']', '\\']
+metacharacters = ['[', ']', '\\', '$']
 
 parseEscaped :: Parser Char
-parseEscaped = asum $ map (\c -> c <$ parseString ['\\', c]) metacharacters
+parseEscaped = asum $ map ((parseChar '\\' *>) . parseChar) metacharacters
 
 parseNotEscaped :: Parser Char
 parseNotEscaped = parsePred $ not . (`elem` metacharacters)
@@ -50,12 +51,15 @@ parseLiteral = Literal <$> (parseNotEscaped <|> parseEscaped)
 parsePositiveGroup :: Parser RegexPattern
 parsePositiveGroup = parseChar '[' *> (PositiveGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
 
+parseEnd :: Parser RegexPattern
+parseEnd = End <$ parseChar '$'
+
 parsePattern :: Parser RegexPattern
-parsePattern = parsePositiveGroup <|> parseLiteral
+parsePattern = parsePositiveGroup <|> parseEnd <|> parseLiteral
 
 parseRegex :: Parser Regex
 parseRegex = Regex <$> many parsePattern
 
 -- helper function for quick testing in the repl
 grep :: String -> String -> Maybe String
-grep = runParser . applyRegex . fromJust . runParser parseRegex
+grep = runParser . applyRegex . fromJust . runParser (parseRegex <* eof)
