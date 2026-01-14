@@ -15,6 +15,7 @@ data RegexPattern
         | Any
         | Group Regex
         | Digit
+        | NotDigit
         deriving (Show)
 
 newtype Regex = Regex [RegexPattern]
@@ -32,6 +33,7 @@ applyPattern Start = [] <$ start
 applyPattern Any = return <$> parsePred (const True)
 applyPattern (Group r) = applyRegex r
 applyPattern Digit = return <$> parsePred (isDigit)
+applyPattern NotDigit = return <$> parsePred (not . isDigit)
 
 applyRegex :: Regex -> Parser String
 applyRegex (Regex xs) = concat <$> mapM applyPattern xs
@@ -87,6 +89,9 @@ parseGroup = parseChar '(' *> (Group <$> parseRegex) <* parseChar ')'
 
 parseDigit :: Parser RegexPattern
 parseDigit = Digit <$ parseString "\\d"
+
+parseNotDigit :: Parser RegexPattern
+parseNotDigit = NotDigit <$ parseString "\\D"
 
 parsePattern :: Parser RegexPattern
 parsePattern =
