@@ -1,7 +1,7 @@
 import Control.Applicative
 import Control.Monad
 import Control.Monad.State
-import Data.Char (isDigit, isSpace)
+import Data.Char
 import Data.Maybe (fromJust)
 
 -- state stores unparsed string and whether we are at the start or not
@@ -18,6 +18,8 @@ data RegexPattern
         | NotDigit
         | WhiteSpace
         | NotWhiteSpace
+        | Word
+        | NotWord
         deriving (Show)
 
 newtype Regex = Regex [RegexPattern]
@@ -34,10 +36,12 @@ applyPattern End = [] <$ eof
 applyPattern Start = [] <$ start
 applyPattern Any = return <$> parsePred (const True)
 applyPattern (Group r) = applyRegex r
-applyPattern Digit = return <$> parsePred (isDigit)
+applyPattern Digit = return <$> parsePred isDigit
 applyPattern NotDigit = return <$> parsePred (not . isDigit)
-applyPattern WhiteSpace = return <$> parsePred (isSpace)
+applyPattern WhiteSpace = return <$> parsePred isSpace
 applyPattern NotWhiteSpace = return <$> parsePred (not . isSpace)
+applyPattern Word = return <$> parsePred isAlpha
+applyPattern NotWord = return <$> parsePred (not . isAlpha)
 
 applyRegex :: Regex -> Parser String
 applyRegex (Regex xs) = concat <$> mapM applyPattern xs
@@ -70,53 +74,22 @@ parseEscaped = asum $ map ((parseChar '\\' *>) . parseChar) metacharacters
 parseNotEscaped :: Parser Char
 parseNotEscaped = parsePred $ not . (`elem` metacharacters)
 
-parseLiteral :: Parser RegexPattern
-parseLiteral = Literal <$> (parseNotEscaped <|> parseEscaped)
-
-parsePositiveGroup :: Parser RegexPattern
-parsePositiveGroup = parseChar '[' *> (PositiveGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
-
-parseNegativeGroup :: Parser RegexPattern
-parseNegativeGroup = parseString "[^" *> (NegativeGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
-
-parseEnd :: Parser RegexPattern
-parseEnd = End <$ parseChar '$'
-
-parseStart :: Parser RegexPattern
-parseStart = Start <$ parseChar '^'
-
-parseAny :: Parser RegexPattern
-parseAny = Any <$ parseChar '.'
-
-parseGroup :: Parser RegexPattern
-parseGroup = parseChar '(' *> (Group <$> parseRegex) <* parseChar ')'
-
-parseDigit :: Parser RegexPattern
-parseDigit = Digit <$ parseString "\\d"
-
-parseNotDigit :: Parser RegexPattern
-parseNotDigit = NotDigit <$ parseString "\\D"
-
-parseWhiteSpace :: Parser RegexPattern
-parseWhiteSpace = WhiteSpace <$ parseString "\\s"
-
-parseNotWhiteSpace :: Parser RegexPattern
-parseNotWhiteSpace = NotWhiteSpace <$ parseString "\\S"
-
 parsePattern :: Parser RegexPattern
 parsePattern =
         asum
-                [ parseLiteral
-                , parsePositiveGroup
-                , parseNegativeGroup
-                , parseEnd
-                , parseStart
-                , parseAny
-                , parseGroup
-                , parseDigit
-                , parseNotDigit
-                , parseWhiteSpace
-                , parseNotWhiteSpace
+                [ Literal <$> (parseNotEscaped <|> parseEscaped)
+                , parseChar '[' *> (PositiveGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
+                , parseString "[^" *> (NegativeGroup <$> some (parsePred (/= ']'))) <* parseChar ']'
+                , End <$ parseChar '$'
+                , Start <$ parseChar '^'
+                , Any <$ parseChar '.'
+                , parseChar '(' *> (Group <$> parseRegex) <* parseChar ')'
+                , Digit <$ parseString "\\d"
+                , NotDigit <$ parseString "\\D"
+                , WhiteSpace <$ parseString "\\s"
+                , NotWhiteSpace <$ parseString "\\S"
+                , Word <$ parseString "\\w"
+                , NotWord <$ parseString "\\W"
                 ]
 
 parseRegex :: Parser Regex
