@@ -12,7 +12,9 @@ data RegexPattern
         | End
         | Start
         | Any
+        | Group Regex
         deriving (Show)
+
 newtype Regex = Regex [RegexPattern]
         deriving (Show)
 
@@ -26,6 +28,7 @@ applyPattern (NegativeGroup cs) = return <$> parsePred (not . (`elem` cs))
 applyPattern End = [] <$ eof
 applyPattern Start = [] <$ start
 applyPattern Any = return <$> parsePred (const True)
+applyPattern (Group r) = applyRegex r
 
 applyRegex :: Regex -> Parser String
 applyRegex (Regex xs) = concat <$> mapM applyPattern xs
@@ -75,6 +78,9 @@ parseStart = Start <$ parseChar '^'
 
 parseAny :: Parser RegexPattern
 parseAny = Any <$ parseChar '.'
+
+parseGroup :: Parser RegexPattern
+parseGroup = parseChar '(' *> (Group <$> parseRegex) <* parseChar ')'
 
 parsePattern :: Parser RegexPattern
 parsePattern = parseNegativeGroup <|> parsePositiveGroup <|> parseEnd <|> parseStart <|> parseLiteral
