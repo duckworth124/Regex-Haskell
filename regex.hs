@@ -1,7 +1,7 @@
 import Control.Applicative
 import Control.Monad
 import Control.Monad.State
-import Data.Char (isDigit)
+import Data.Char (isDigit, isSpace)
 import Data.Maybe (fromJust)
 
 -- state stores unparsed string and whether we are at the start or not
@@ -16,6 +16,8 @@ data RegexPattern
         | Group Regex
         | Digit
         | NotDigit
+        | WhiteSpace
+        | NotWhiteSpace
         deriving (Show)
 
 newtype Regex = Regex [RegexPattern]
@@ -34,6 +36,8 @@ applyPattern Any = return <$> parsePred (const True)
 applyPattern (Group r) = applyRegex r
 applyPattern Digit = return <$> parsePred (isDigit)
 applyPattern NotDigit = return <$> parsePred (not . isDigit)
+applyPattern WhiteSpace = return <$> parsePred (isSpace)
+applyPattern NotWhiteSpace = return <$> parsePred (not . isSpace)
 
 applyRegex :: Regex -> Parser String
 applyRegex (Regex xs) = concat <$> mapM applyPattern xs
@@ -93,16 +97,27 @@ parseDigit = Digit <$ parseString "\\d"
 parseNotDigit :: Parser RegexPattern
 parseNotDigit = NotDigit <$ parseString "\\D"
 
+parseWhiteSpace :: Parser RegexPattern
+parseWhiteSpace = WhiteSpace <$ parseString "\\s"
+
+parseNotWhiteSpace :: Parser RegexPattern
+parseNotWhiteSpace = NotWhiteSpace <$ parseString "\\S"
+
 parsePattern :: Parser RegexPattern
 parsePattern =
-        parseLiteral
-                <|> parsePositiveGroup
-                <|> parseNegativeGroup
-                <|> parseEnd
-                <|> parseStart
-                <|> parseAny
-                <|> parseGroup
-                <|> parseDigit
+        asum
+                [ parseLiteral
+                , parsePositiveGroup
+                , parseNegativeGroup
+                , parseEnd
+                , parseStart
+                , parseAny
+                , parseGroup
+                , parseDigit
+                , parseNotDigit
+                , parseWhiteSpace
+                , parseNotWhiteSpace
+                ]
 
 parseRegex :: Parser Regex
 parseRegex = Regex <$> many parsePattern
