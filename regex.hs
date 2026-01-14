@@ -20,6 +20,9 @@ data RegexPattern
         | NotWhiteSpace
         | Word
         | NotWord
+        | Some RegexPattern
+        | Many RegexPattern
+        | Optional RegexPattern
         deriving (Show)
 
 newtype Regex = Regex [RegexPattern]
@@ -42,6 +45,9 @@ applyPattern WhiteSpace = return <$> parsePred isSpace
 applyPattern NotWhiteSpace = return <$> parsePred (not . isSpace)
 applyPattern Word = return <$> parsePred isAlpha
 applyPattern NotWord = return <$> parsePred (not . isAlpha)
+applyPattern (Some p) = concat <$> some (applyPattern p)
+applyPattern (Many p) = concat <$> many (applyPattern p)
+applyPattern (Optional p) = concat <$> optional (applyPattern p)
 
 applyRegex :: Regex -> Parser String
 applyRegex (Regex xs) = concat <$> mapM applyPattern xs
@@ -91,6 +97,12 @@ parsePattern =
                 , Word <$ parseString "\\w"
                 , NotWord <$ parseString "\\W"
                 ]
+                >>= ( \p ->
+                        (Some p <$ parseChar '+')
+                                <|> (Many p <$ parseChar '*')
+                                <|> (Optional p <$ parseChar '?')
+                                <|> return p
+                    )
 
 parseRegex :: Parser Regex
 parseRegex = Regex <$> many parsePattern
